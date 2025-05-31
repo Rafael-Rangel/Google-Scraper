@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resultados - Google Maps Scraper</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <span class="material-icons">location_on</span>
+                Google Maps Scraper
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="results-header">
+            <div>
+                <h2>Resultados da Busca</h2>
+                <p>Busca por: <strong id="searchQuery">...</strong></p>
+                <p>Total de resultados: <strong id="totalResults">0</strong></p>
+            </div>
+            <div class="export-buttons">
+                <a href="/export/txt" class="btn btn-outline" target="_blank">Exportar TXT</a>
+                <a href="/export/json" class="btn btn-outline" target="_blank">Exportar JSON</a>
+                <a href="/export/excel" class="btn btn-outline" target="_blank">Exportar Excel</a>
+                <a href="/" class="btn">Nova Busca</a>
+            </div>
+        </div>
+
+        <div id="alertContainer" class="alert-container"></div>
+
+        <ul id="resultsList" class="results-list">
+            <!-- Os resultados serão inseridos aqui via JavaScript -->
+        </ul>
+    </div>
+
+    <div id="loadingOverlay" class="loading-overlay active">
+        <h2>Coletando Dados...</h2>
+        <div id="progressContainer" class="progress-container" style="display: block;">
+            <div class="progress-bar">
+                <div id="progressBarFill" class="progress-bar-fill" style="width: 0%"></div>
+            </div>
+            <p id="progressStatus" class="progress-status">Iniciando coleta de dados...</p>
+        </div>
+    </div>
+
+    <footer>
+        <div class="container">
+            <p class="text-center">Google Maps Scraper - Ferramenta de Prospecção</p>
+            <p class="mt-1">Nota: Esta ferramenta é apenas para fins educacionais. O uso de web scraping pode violar os Termos de Serviço do Google.</p>
+        </div>
+    </footer>
+
+    <script src="/static/js/results.js"></script>
+</body>
+</html>

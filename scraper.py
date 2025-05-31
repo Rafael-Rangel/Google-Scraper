@@ -43,7 +43,8 @@ def main():
         except Exception:
             try:
                 # Fallback to Playwright's default Chromium if Chrome path fails or not on Windows
-                browser = p.chromium.launch(headless=False)
+                browser = p.chromium.launch(headless=True)
+
             except Exception as e:
                 print(f"Erro fatal: Não foi possível iniciar o navegador Chromium. Verifique a instalação do Playwright.")
                 print(f"Detalhes do erro: {e}")

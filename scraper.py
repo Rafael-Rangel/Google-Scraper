@@ -4,6 +4,8 @@ import argparse
 import time
 import os
 import sys
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # Initialize lists to store scraped data
 names_list=[]

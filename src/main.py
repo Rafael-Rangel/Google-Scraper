@@ -85,7 +85,7 @@ def scrape_google_maps(search_query, max_results):
             
             previously_counted = 0
             scroll_attempts = 0
-            max_scroll_attempts = 50
+            max_scroll_attempts = 30
             
             while scroll_attempts < max_scroll_attempts:
                 page.mouse.wheel(0, 10000)

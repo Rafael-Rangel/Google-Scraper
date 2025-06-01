@@ -24,7 +24,7 @@ def run_scraper(establishment_type, location, max_results):
         
     except Exception as e:
         search_status["error"] = str(e)
-        search_status["message"] = "import sys
+        search_status["message"] = "Erro durante a coleta de dados."
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))  # Necessário para deploy
 

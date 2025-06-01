@@ -92,7 +92,7 @@ def scrape_google_maps(search_query, max_results):
             
             previously_counted = 0
             scroll_attempts = 0
-            max_scroll_attempts = min(20, max(5, max_results // 5))
+            max_scroll_attempts = 30
             
             while scroll_attempts < max_scroll_attempts:
                 page.mouse.wheel(0, 10000)
@@ -123,15 +123,6 @@ def scrape_google_maps(search_query, max_results):
                 search_status["progress"] = progress
                 search_status["message"] = f"Coletando dados ({i+1}/{len(listings)})..."
                 
-                memory_usage = check_memory_usage()
-                
-                if i % 10 == 0:
-                    print(f"Uso de memória atual: {memory_usage:.2f} MB")
-                
-                if memory_usage > 400:
-                    print("Uso de memória alto, pausando brevemente...")
-                    page.wait_for_timeout(5000)
-
                 try:
                     # Clicar no resultado
                     listing = listing_link.locator("xpath=..")
@@ -142,14 +133,9 @@ def scrape_google_maps(search_query, max_results):
                     try:
                         page.wait_for_selector(name_xpath, timeout=15000)
                     except Exception:
-                        pass
+                        continue
                     
-                    # Pausa a cada 20 resultados
-                    if i > 0 and i % 20 == 0:
-                        print(f"Pausa após processar {i} resultados...")
-                        memory_usage = check_memory_usage()
-                        print(f"Uso de memória: {memory_usage:.2f} MB")
-                        page.wait_for_timeout(3000)  # Pausa de 3 segundos a cada 20 resultados
+                    page.wait_for_timeout(1500)
                     
                     # Extrair dados
                     name = extract_data(name_xpath, page)
@@ -221,7 +207,6 @@ def scrape_google_maps(search_query, max_results):
                     results.append(result)
                     
                 except Exception as e:
-                    print(f"Erro ao processar resultado {i+1}: {e}")
                     continue
                 
                 # Pequena pausa entre requisições

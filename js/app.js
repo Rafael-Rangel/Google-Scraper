@@ -65,9 +65,10 @@ document.addEventListener('DOMContentLoaded', function() {
             // Atualizar progresso
             updateProgress(20, 'Buscando localização...');
             
-            // Primeiro, obter as coordenadas da localização
+            // Primeiro, obter as coordenadas da localização usando um proxy CORS
             const locationQuery = encodeURIComponent(location);
-            const locationUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${locationQuery}&limit=1`;
+            const corsProxyUrl = 'https://corsproxy.io/?';
+            const locationUrl = `${corsProxyUrl}https://nominatim.openstreetmap.org/search?format=json&q=${locationQuery}&limit=1`;
             
             console.log('Buscando localização:', locationUrl );
             
@@ -96,7 +97,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Agora, buscar estabelecimentos próximos à localização
             const amenityQuery = encodeURIComponent(establishmentType);
-            const radius = 10000; // Aumentado para 10km de raio
+            const radius = 10000; // 10km de raio
             const limit = Math.min(maxResults, 50); // Limitar a 50 resultados no máximo
             
             // Usar Overpass API para buscar estabelecimentos
@@ -112,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             console.log('Query Overpass:', overpassQuery);
             
-            const overpassUrl = 'https://overpass-api.de/api/interpreter';
+            const overpassUrl = `${corsProxyUrl}https://overpass-api.de/api/interpreter`;
             
             console.log('Buscando estabelecimentos via Overpass API...' );
             

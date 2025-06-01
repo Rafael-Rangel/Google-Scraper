@@ -69,6 +69,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const locationQuery = encodeURIComponent(location);
             const locationUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${locationQuery}&limit=1`;
             
+            console.log('Buscando localização:', locationUrl );
+            
             const locationResponse = await fetch(locationUrl, {
                 headers: {
                     'User-Agent': 'MapsFinderWebApp/1.0'
@@ -76,23 +78,25 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             if (!locationResponse.ok) {
-                throw new Error('Erro ao buscar localização');
+                throw new Error('Erro ao buscar localização: ' + locationResponse.status);
             }
             
             const locationData = await locationResponse.json();
+            console.log('Resposta da API de localização:', locationData);
             
             if (!locationData || locationData.length === 0) {
                 throw new Error('Localização não encontrada');
             }
             
             const { lat, lon } = locationData[0];
+            console.log('Coordenadas encontradas:', lat, lon);
             
             // Atualizar progresso
             updateProgress(40, 'Buscando estabelecimentos...');
             
             // Agora, buscar estabelecimentos próximos à localização
             const amenityQuery = encodeURIComponent(establishmentType);
-            const radius = 5000; // 5km de raio
+            const radius = 10000; // Aumentado para 10km de raio
             const limit = Math.min(maxResults, 50); // Limitar a 50 resultados no máximo
             
             // Usar Overpass API para buscar estabelecimentos
@@ -106,7 +110,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 out center ${limit};
             `;
             
+            console.log('Query Overpass:', overpassQuery);
+            
             const overpassUrl = 'https://overpass-api.de/api/interpreter';
+            
+            console.log('Buscando estabelecimentos via Overpass API...' );
             
             const overpassResponse = await fetch(overpassUrl, {
                 method: 'POST',
@@ -118,16 +126,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             if (!overpassResponse.ok) {
-                throw new Error('Erro ao buscar estabelecimentos');
+                throw new Error('Erro ao buscar estabelecimentos: ' + overpassResponse.status);
             }
             
             const overpassData = await overpassResponse.json();
+            console.log('Resposta da API Overpass:', overpassData);
             
             // Atualizar progresso
             updateProgress(70, 'Processando resultados...');
             
             // Processar os resultados
             const results = overpassData.elements.map(element => {
+                console.log('Processando elemento:', element);
+                
                 // Determinar as coordenadas com base no tipo de elemento
                 let elementLat, elementLon;
                 
@@ -141,6 +152,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Extrair tags
                 const tags = element.tags || {};
+                console.log('Tags do elemento:', tags);
                 
                 return {
                     id: element.id,
@@ -164,11 +176,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 };
             });
             
+            console.log('Resultados processados:', results);
+            
             // Filtrar resultados sem nome
             const filteredResults = results.filter(result => result.name !== 'Nome não disponível');
+            console.log('Resultados filtrados:', filteredResults);
             
             // Limitar ao número máximo de resultados solicitados
             searchResults = filteredResults.slice(0, maxResults);
+            console.log('Resultados finais:', searchResults);
             
             // Atualizar progresso
             updateProgress(90, 'Finalizando...');
@@ -191,6 +207,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Esta função pode ser expandida para buscar mais detalhes de outras APIs
         // Por exemplo, ratings, reviews, etc.
         
+        console.log('Enriquecendo resultados com dados adicionais...');
+        
         // Simulação de enriquecimento de dados
         for (let i = 0; i < results.length; i++) {
             const result = results[i];
@@ -207,6 +225,8 @@ document.addEventListener('DOMContentLoaded', function() {
             // Pequena pausa para não sobrecarregar as APIs
             await new Promise(resolve => setTimeout(resolve, 50));
         }
+        
+        console.log('Resultados enriquecidos:', results);
     }
     
     // Função para formatar o endereço a partir das tags
@@ -249,54 +269,70 @@ document.addEventListener('DOMContentLoaded', function() {
         // Limpar lista de resultados
         resultsList.innerHTML = '';
         
-        // Adicionar cada resultado à lista
-        searchResults.forEach(result => {
-            const resultItem = document.createElement('div');
-            resultItem.className = 'result-item';
-            
-            // Criar estrelas para avaliação
-            let starsHtml = '';
-            if (result.average_rating !== 'N/A') {
-                const rating = parseFloat(result.average_rating);
-                const fullStars = Math.floor(rating);
-                const halfStar = rating % 1 >= 0.5;
+        if (searchResults.length === 0) {
+            // Mostrar mensagem de nenhum resultado encontrado
+            resultsList.innerHTML = `
+                <div class="result-item">
+                    <h3 class="result-title">Nenhum resultado encontrado</h3>
+                    <p>Tente modificar sua busca ou aumentar o raio de busca.</p>
+                    <p>Dicas:</p>
+                    <ul>
+                        <li>Verifique a ortografia do tipo de estabelecimento e da localização</li>
+                        <li>Use termos mais genéricos (ex: "mercado" em vez de "supermercado")</li>
+                        <li>Tente uma localização mais específica ou mais conhecida</li>
+                    </ul>
+                </div>
+            `;
+        } else {
+            // Adicionar cada resultado à lista
+            searchResults.forEach(result => {
+                const resultItem = document.createElement('div');
+                resultItem.className = 'result-item';
                 
-                for (let i = 0; i < 5; i++) {
-                    if (i < fullStars) {
-                        starsHtml += '<span class="material-icons">star</span>';
-                    } else if (i === fullStars && halfStar) {
-                        starsHtml += '<span class="material-icons">star_half</span>';
-                    } else {
-                        starsHtml += '<span class="material-icons">star_border</span>';
+                // Criar estrelas para avaliação
+                let starsHtml = '';
+                if (result.average_rating !== 'N/A') {
+                    const rating = parseFloat(result.average_rating);
+                    const fullStars = Math.floor(rating);
+                    const halfStar = rating % 1 >= 0.5;
+                    
+                    for (let i = 0; i < 5; i++) {
+                        if (i < fullStars) {
+                            starsHtml += '<span class="material-icons">star</span>';
+                        } else if (i === fullStars && halfStar) {
+                            starsHtml += '<span class="material-icons">star_half</span>';
+                        } else {
+                            starsHtml += '<span class="material-icons">star_border</span>';
+                        }
                     }
                 }
-            }
-            
-            // Construir HTML do item
-            resultItem.innerHTML = `
-                <h3 class="result-title">${result.name}</h3>
-                <p class="result-info"><span class="result-label">Tipo:</span> ${result.type}</p>
-                <p class="result-info"><span class="result-label">Endereço:</span> ${result.address}</p>
-                <p class="result-info"><span class="result-label">Telefone:</span> ${result.phone}</p>
-                <p class="result-info"><span class="result-label">Website:</span> ${result.website !== 'N/A' ? `<a href="${result.website}" target="_blank">${result.website}</a>` : 'N/A'}</p>
-                <p class="result-info"><span class="result-label">Horário:</span> ${result.opening_hours}</p>
-                ${result.introduction !== 'N/A' ? `<p class="result-info"><span class="result-label">Descrição:</span> ${result.introduction}</p>` : ''}
-                <div class="result-rating">
-                    <div class="rating-stars">${starsHtml}</div>
-                    <span>${result.average_rating} (${result.review_count} avaliações)</span>
-                </div>
-                <p class="result-info mt-1">
-                    <span class="result-label">Compras na Loja:</span> ${result.store_shopping ? 'Sim' : 'Não'} | 
-                    <span class="result-label">Retirada na Loja:</span> ${result.in_store_pickup ? 'Sim' : 'Não'} | 
-                    <span class="result-label">Entrega:</span> ${result.delivery ? 'Sim' : 'Não'}
-                </p>
-                <p class="result-info mt-1">
-                    <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(result.name + ' ' + result.address)}" target="_blank" class="btn btn-outline">Ver no Google Maps</a>
-                </p>
-            `;
-            
-            resultsList.appendChild(resultItem);
-        });
+                
+                // Construir HTML do item
+                resultItem.innerHTML = `
+                    <h3 class="result-title">${result.name}</h3>
+                    <p class="result-info"><span class="result-label">Tipo:</span> ${result.type}</p>
+                    <p class="result-info"><span class="result-label">Endereço:</span> ${result.address}</p>
+                    <p class="result-info"><span class="result-label">Telefone:</span> ${result.phone}</p>
+                    <p class="result-info"><span class="result-label">Website:</span> ${result.website !== 'N/A' ? `<a href="${result.website}" target="_blank">${result.website}</a>` : 'N/A'}</p>
+                    <p class="result-info"><span class="result-label">Horário:</span> ${result.opening_hours}</p>
+                    ${result.introduction !== 'N/A' ? `<p class="result-info"><span class="result-label">Descrição:</span> ${result.introduction}</p>` : ''}
+                    <div class="result-rating">
+                        <div class="rating-stars">${starsHtml}</div>
+                        <span>${result.average_rating} (${result.review_count} avaliações)</span>
+                    </div>
+                    <p class="result-info mt-1">
+                        <span class="result-label">Compras na Loja:</span> ${result.store_shopping ? 'Sim' : 'Não'} | 
+                        <span class="result-label">Retirada na Loja:</span> ${result.in_store_pickup ? 'Sim' : 'Não'} | 
+                        <span class="result-label">Entrega:</span> ${result.delivery ? 'Sim' : 'Não'}
+                    </p>
+                    <p class="result-info mt-1">
+                        <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(result.name + ' ' + result.address )}" target="_blank" class="btn btn-outline">Ver no Google Maps</a>
+                    </p>
+                `;
+                
+                resultsList.appendChild(resultItem);
+            });
+        }
         
         // Esconder overlay de carregamento
         loadingOverlay.classList.remove('active');

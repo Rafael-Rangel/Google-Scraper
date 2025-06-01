@@ -1,85 +1,110 @@
-# Google Maps Scraper - Versão Simplificada
+# Google Maps Scraper
 
-Esta é uma versão simplificada da aplicação Google Maps Scraper, com uma estrutura de diretórios mais simples para facilitar a execução local no Windows.
+Uma ferramenta para coletar dados de estabelecimentos do Google Maps de forma automatizada.
+
+## Sobre o Projeto
+
+Este projeto permite buscar estabelecimentos no Google Maps com base em um tipo (ex: farmácias, restaurantes) e uma localização (ex: São Paulo, Rio de Janeiro), coletando informações detalhadas como:
+
+- Nome e tipo do estabelecimento
+- Endereço e telefone
+- Website e horário de funcionamento
+- Avaliações e número de reviews
+- Informações adicionais (compras na loja, retirada, entrega)
+
+Os resultados podem ser exportados em diferentes formatos (TXT, JSON, CSV).
 
 ## Requisitos
 
-- Python 3.8 ou superior
-- Pip (gerenciador de pacotes do Python)
-- Navegador Chromium ou Google Chrome instalado
-- Acesso à internet
+- Python 3.8+
+- Playwright
+- Flask
 
-## Instalação e Execução Local
+## Instalação
 
-### 1. Preparar o Ambiente
-
-Primeiro, certifique-se de ter o Python e o pip instalados. Em seguida, abra o Prompt de Comando (cmd) ou PowerShell como administrador e navegue até a pasta onde você extraiu este arquivo ZIP.
-
+1. Clone o repositório:
 ```bash
-# Navegar até a pasta do projeto (substitua pelo caminho correto)
-cd caminho\para\google_maps_scraper_simplified
+git clone https://github.com/seu-usuario/google-maps-scraper.git
+cd google-maps-scraper
 ```
 
-### 2. Instalar Dependências
-
+2. Crie e ative um ambiente virtual:
 ```bash
-# Instalar as dependências necessárias
+python -m venv venv
+source venv/bin/activate  # No Windows: venv\Scripts\activate
+```
+
+3. Instale as dependências:
+```bash
 pip install -r requirements.txt
 ```
 
-### 3. Instalar Navegadores do Playwright
-
+4. Instale os navegadores necessários para o Playwright:
 ```bash
-# Instalar os navegadores necessários para o Playwright
-playwright install
-```
-
-### 4. Executar a Aplicação
-
-```bash
-# Iniciar a aplicação web
-python app.py
-```
-
-### 5. Acessar a Interface Web
-
-Abra seu navegador e acesse:
-```
-http://localhost:5000
+playwright install chromium
 ```
 
 ## Como Usar
 
-1. Na página inicial, preencha os campos:
-   - **Tipo de Estabelecimento**: Ex: farmácias, restaurantes, hotéis
-   - **Localização**: Ex: Campo Grande, São Paulo, Rio de Janeiro
-   - **Quantidade Máxima de Resultados**: Número de estabelecimentos a coletar
+1. Inicie a aplicação:
+```bash
+python -m src.main
+```
 
-2. Clique em "Iniciar Busca" e aguarde a coleta de dados.
+2. Acesse a interface web em `http://localhost:5000`
 
-3. Na página de resultados, você poderá:
-   - Ver o progresso da coleta em tempo real
-   - Expandir cada card para ver detalhes completos
-   - Baixar os resultados em formato TXT, JSON ou Excel
+3. Preencha o formulário com:
+   - Tipo de estabelecimento (ex: farmácias)
+   - Localização (ex: São Paulo)
+   - Quantidade máxima de resultados
 
-## Solução de Problemas
+4. Clique em "Iniciar Busca" e aguarde a coleta de dados
 
-### Erro ao iniciar o navegador
+5. Visualize os resultados e exporte nos formatos disponíveis
 
-Se você encontrar erros relacionados ao navegador, verifique:
-- Se o Chrome ou Chromium está instalado
-- Se o Playwright foi instalado corretamente com `playwright install`
-- Se você tem permissões para executar o navegador
+## Deploy Online Gratuito
 
-### Erro de conexão com o Google Maps
+### Opção 1: Railway
 
-- Verifique sua conexão com a internet
-- O Google pode ter limitado temporariamente seu acesso devido a muitas requisições
+1. Crie uma conta no [Railway](https://railway.app/)
+2. Conecte seu repositório GitHub ou faça upload do código
+3. Configure as variáveis de ambiente necessárias
+4. Deploy automático
 
-### Erro ao exportar para Excel
+### Opção 2: Render
 
-- Certifique-se de que o pandas e openpyxl estão instalados corretamente
+1. Crie uma conta no [Render](https://render.com/)
+2. Crie um novo Web Service
+3. Conecte seu repositório ou faça upload do código
+4. Configure como "Docker" e use o Dockerfile incluído
+5. Deploy automático
+
+## Estrutura do Projeto
+
+```
+google-maps-scraper/
+├── src/
+│   ├── main.py           # Arquivo principal da aplicação Flask
+│   ├── static/           # Arquivos estáticos (CSS, JS)
+│   └── templates/        # Templates HTML
+├── Dockerfile            # Configuração para deploy em containers
+├── requirements.txt      # Dependências Python
+└── README.md             # Este arquivo
+```
 
 ## Notas Importantes
 
-Esta ferramenta é apenas para fins educacionais. O uso de web scraping pode violar os Termos de Serviço do Google. Use por sua conta e risco.
+- Esta ferramenta é apenas para fins educacionais
+- O uso de web scraping pode violar os Termos de Serviço do Google
+- Recomenda-se limitar o número de buscas para evitar bloqueios
+- Em ambientes de produção, considere adicionar proxies e rotação de IPs
+
+## Limitações Conhecidas
+
+- O Google Maps pode bloquear requisições automatizadas após uso intenso
+- Algumas informações podem não estar disponíveis para todos os estabelecimentos
+- O deploy em ambientes gratuitos pode ter limitações de recursos e tempo de execução
+
+## Licença
+
+Este projeto é distribuído sob a licença MIT. Veja o arquivo LICENSE para mais detalhes.

@@ -66,7 +66,7 @@ def scrape_google_maps(search_query, max_results):
             
             # Acessar Google Maps
             page.goto("https://www.google.com/maps", timeout=60000)
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(10000)
             
             # Buscar pelo termo
             search_status["progress"] = 25
@@ -92,7 +92,7 @@ def scrape_google_maps(search_query, max_results):
             
             previously_counted = 0
             scroll_attempts = 0
-            max_scroll_attempts = 30
+            max_scroll_attempts = 50
             
             while scroll_attempts < max_scroll_attempts:
                 page.mouse.wheel(0, 10000)
@@ -266,7 +266,7 @@ def search():
     # Obter parâmetros do formulário
     establishment_type = request.form.get('establishment_type')
     location = request.form.get('location')
-    max_results = int(request.form.get('max_results', 20))
+    max_results = int(request.form.get('max_results', 50))
     
     # Validar parâmetros
     if not establishment_type or not location:

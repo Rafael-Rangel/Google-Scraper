@@ -1,3 +1,16 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))  # Necessário para deploy
+
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for
+import json
+import time
+import threading
+import traceback
+from datetime import datetime
+import io
+from playwright.sync_api import sync_playwright
+
 def run_scraper(establishment_type, location, max_results):
     global search_results, search_status
     

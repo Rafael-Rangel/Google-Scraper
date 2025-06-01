@@ -103,7 +103,7 @@ def run_scraper(establishment_type, location, max_results):
                     content = f.read()
                 
                 # Processar o conteúdo do arquivo TXT para extrair os dados estruturados
-                sections = content.split("------------------------------")
+                sections = content.split("------------------------------\n\n")
                 
                 # Limpar a lista de resultados
                 search_results.clear()

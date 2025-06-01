@@ -10,50 +10,11 @@ import traceback
 from datetime import datetime
 import io
 from playwright.sync_api import sync_playwright
+import psutil # Moved from inside function
 
-def run_scraper(establishment_type, location, max_results):
-    global search_results, search_status
-    
-    try:
-        search_status["is_running"] = True
-        search_status["progress"] = 10
-        search_status["message"] = "Iniciando coleta de dados..."
-        search_status["error"] = None
-        search_status["debug_logs"] = []  # Limpar logs anteriores
-        
-        # Construir a query de busca
-        search_query = f"{establishment_type} em {location}"
-        
-        # Executar o scraper
-        results = scrape_google_maps(search_query, max_results)
-        
-        # Armazenar resultados
-        search_results = results
-        search_status["total_found"] = len(results)
-        
-        search_status["progress"] = 100
-        search_status["message"] = "Coleta concluída com sucesso!"
-        search_status["is_running"] = False
-        
-    except Exception as e:
-        search_status["error"] = str(e)
-        search_status["message"] = "Erro durante a coleta de dados."
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))  # Necessário para deploy
-
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for
-import json
-import time
-import threading
-import traceback
-from datetime import datetime
-import io
-import os
-from playwright.sync_api import sync_playwright
-
+# --- Global variables and Flask app initialization ---
 app = Flask(__name__)
 
-# Configuração global para armazenar os resultados da busca
 search_results = []
 search_params = {}
 search_status = {
@@ -62,536 +23,374 @@ search_status = {
     "message": "",
     "error": None,
     "total_found": 0,
-    "debug_logs": []  # Adicionando logs para o frontend
+    "debug_logs": []
 }
 
+# --- Helper Functions ---
 def check_memory_usage():
     """Verifica o uso de memória atual."""
-    import psutil
     process = psutil.Process()
     memory_info = process.memory_info()
     return memory_info.rss / 1024 / 1024  # MB
 
-# Função para extrair dados de um elemento usando XPath
 def extract_data(xpath, page):
     """Extrai texto de um elemento usando XPath."""
     try:
-        if page.locator(xpath).count() > 0:
-            data = page.locator(xpath).first.inner_text()
-            return data
+        locator = page.locator(xpath).first
+        if locator.count() > 0 and locator.is_visible():
+            data = locator.inner_text()
+            return data.strip() if data else "N/A"
         else:
+            # Log why it's N/A
+            # add_debug_log(f"⚠️ extract_data: Element not found or not visible for xpath {xpath}")
             return "N/A"
     except Exception as e:
-        return "N/A"
+        # add_debug_log(f"❌ Error in extract_data for xpath {xpath}: {e}")
+        return "N/A (exception)"
 
-# Função principal de scraping
 def add_debug_log(message):
     """Adiciona log tanto no console quanto no status para o frontend."""
-    print(message)
-    search_status["debug_logs"].append(f"{datetime.now().strftime('%H:%M:%S')} - {message}")
-    # Manter apenas os últimos 50 logs para não sobrecarregar
+    log_entry = f"{datetime.now().strftime('%H:%M:%S')} - {message}"
+    print(log_entry)
+    search_status["debug_logs"].append(log_entry)
     if len(search_status["debug_logs"]) > 50:
         search_status["debug_logs"] = search_status["debug_logs"][-50:]
 
+# --- Scraping Logic ---
 def scrape_google_maps(search_query, max_results):
     """Função principal para scraping do Google Maps."""
-    global search_status
-    
-    # Listas para armazenar dados
-    results = []
-    
+    global search_status, search_results # Allow modification of global status
+    local_results = [] # Use a local list for this run
+
     with sync_playwright() as p:
-        search_status["progress"] = 15
-        search_status["message"] = "Iniciando navegador..."
-        add_debug_log(f"🚀 INICIANDO SCRAPER - Query: {search_query}, Max Results: {max_results}")
-        
-        # Iniciar navegador em modo headless (invisível)
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        
+        search_status["progress"] = 5
+        search_status["message"] = "Iniciando processo de scraping..."
+        search_status["error"] = None # Clear previous errors
+        search_status["is_running"] = True
+        search_status["debug_logs"] = [] # Clear previous logs
+        add_debug_log(f"🚀 INICIANDO SCRAPER - Query: '{search_query}', Max Results: {max_results}")
+
+        browser = None
+        page = None
         try:
-            search_status["progress"] = 20
+            # --- Browser Setup ---
+            search_status["progress"] = 10
+            search_status["message"] = "Iniciando navegador..."
+            # Consider adding args like '--disable-gpu', '--no-sandbox' if needed
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            add_debug_log("🤖 Navegador iniciado.")
+
+            # --- Navigation and Search ---
+            search_status["progress"] = 15
             search_status["message"] = "Acessando Google Maps..."
             add_debug_log("🌐 Acessando Google Maps...")
-            
-            # Acessar Google Maps
             page.goto("https://www.google.com/maps", timeout=60000)
-            page.wait_for_timeout(10000)
-            add_debug_log("✅ Google Maps carregado")
-            
-            # Buscar pelo termo
-            search_status["progress"] = 25
+            page.wait_for_selector('//input[@id="searchboxinput"]', timeout=45000)
+            add_debug_log("✅ Google Maps carregado.")
+
+            search_status["progress"] = 20
             search_status["message"] = f"Buscando por: {search_query}..."
             add_debug_log(f"🔍 Realizando busca por: {search_query}")
-            
             page.locator('//input[@id="searchboxinput"]').fill(search_query)
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(500)
             page.keyboard.press("Enter")
-            add_debug_log("⌨️ Enter pressionado, aguardando resultados...")
-            
-            # Esperar pelos resultados
-            results_xpath = '//a[contains(@href, "https://www.google.com/maps/place")]'
+            add_debug_log("⌨️ Busca enviada, aguardando resultados...")
+
+            # --- Initial Results Check ---
+            results_container_xpath = '//div[contains(@aria-label, "Resultados para")] | //div[contains(@aria-label, "Results for")]'
+            results_xpath = f'{results_container_xpath}//a[contains(@href, "https://www.google.com/maps/place")]'
             try:
-                page.wait_for_selector(results_xpath, timeout=30000)
+                page.wait_for_selector(results_container_xpath, timeout=30000)
+                page.wait_for_timeout(2000) # Allow results to populate
                 initial_count = page.locator(results_xpath).count()
-                add_debug_log(f"🎯 Primeiros resultados encontrados: {initial_count}")
-                search_status["message"] = "Resultados encontrados, carregando mais..."
-            except Exception as e:
-                add_debug_log(f"❌ Erro ao encontrar resultados: {str(e)}")
-                search_status["error"] = f"Não foi possível encontrar resultados para '{search_query}'"
-                browser.close()
-                return []
-            
-            # Rolar para carregar mais resultados
+                if initial_count == 0:
+                    add_debug_log(f"⚠️ Nenhum resultado encontrado inicialmente para '{search_query}'. Verificando...")
+                    no_results_xpath = '//div[contains(text(), "Nenhum resultado encontrado")] | //div[contains(text(), "No results found")]'
+                    if page.locator(no_results_xpath).count() > 0:
+                        add_debug_log(f"❌ Mensagem 'Nenhum resultado encontrado' detectada.")
+                        raise Exception(f"Nenhum resultado encontrado para '{search_query}' no Google Maps.")
+                    else:
+                        add_debug_log(f"❓ Contagem inicial zero, mas sem mensagem 'Nenhum resultado'. Erro inesperado?")
+                        raise Exception(f"Erro inesperado: contagem inicial de resultados zero para '{search_query}'.")
+                else:
+                    add_debug_log(f"🎯 Resultados iniciais encontrados: {initial_count}")
+                    search_status["message"] = "Resultados encontrados, carregando mais..."
+            except Exception as initial_error:
+                # This catches errors specifically from the initial check block
+                add_debug_log(f"❌ Erro na verificação inicial: {initial_error}")
+                raise initial_error # Re-raise to be caught by the main except block
+
+            # --- Scrolling for More Results ---
             search_status["progress"] = 30
-            search_status["message"] = "Carregando resultados..."
-            add_debug_log("📜 INICIANDO PROCESSO DE SCROLL PARA CARREGAR MAIS RESULTADOS")
-            
+            search_status["message"] = "Carregando mais resultados..."
+            add_debug_log("📜 Iniciando scroll para carregar mais resultados...")
             previously_counted = 0
             scroll_attempts = 0
-            max_scroll_attempts = 50
-            stagnant_count = 0  # Contador para tentativas sem mudança
-            
+            max_scroll_attempts = 50 # Limit attempts
+            stagnant_count = 0
+            max_stagnant = 8 # Stop if no change for this many attempts
+
             while scroll_attempts < max_scroll_attempts:
-                add_debug_log(f"🔄 Tentativa de scroll #{scroll_attempts + 1}")
-                
-                # Fazer scroll mais agressivo
-                page.mouse.wheel(0, 15000)
-                page.wait_for_timeout(3000)  # Aumentei o tempo de espera
-                
                 current_count = page.locator(results_xpath).count()
-                add_debug_log(f"📊 Contagem atual: {current_count} (anterior: {previously_counted})")
-                
-                # Verificar se atingiu o máximo desejado
+                add_debug_log(f"🔄 Scroll #{scroll_attempts + 1}, Contagem: {current_count}")
+
                 if current_count >= max_results:
-                    add_debug_log(f"🎯 Meta atingida! {current_count} >= {max_results}")
+                    add_debug_log(f"🎯 Meta de {max_results} atingida ou superada ({current_count}). Parando scroll.")
                     break
-                
-                # Verificar se não houve mudança
+
                 if current_count == previously_counted:
                     stagnant_count += 1
-                    add_debug_log(f"⚠️ Sem mudança na contagem (tentativa estagnada #{stagnant_count})")
-                    
-                    if stagnant_count >= 5:  # Se ficar 5 tentativas sem mudança
-                        add_debug_log("🛑 Muitas tentativas sem progresso, verificando se há botão 'Ver mais'...")
-                        
-                        # Tentar encontrar e clicar no botão "Ver mais resultados"
-                        more_button_selectors = [
-                            '//button[contains(text(), "Ver mais")]',
-                            '//button[contains(text(), "More results")]',
-                            '//button[contains(text(), "Mais resultados")]',
-                            '//div[contains(@class, "HlvSq")]//button',
-                            '//button[contains(@jsaction, "loadMore")]'
-                        ]
-                        
-                        button_clicked = False
-                        for selector in more_button_selectors:
-                            try:
-                                if page.locator(selector).count() > 0:
-                                    add_debug_log(f"🔘 Encontrei botão 'Ver mais': {selector}")
-                                    page.locator(selector).first.click()
-                                    page.wait_for_timeout(3000)
-                                    button_clicked = True
-                                    stagnant_count = 0  # Reset do contador
-                                    break
-                            except Exception as e:
-                                add_debug_log(f"❌ Erro ao clicar no botão: {e}")
-                                continue
-                        
-                        if not button_clicked:
-                            add_debug_log("🚫 Nenhum botão 'Ver mais' encontrado")
-                            if stagnant_count >= 8:  # Mais algumas tentativas após não encontrar botão
-                                add_debug_log("🏁 Finalizando - sem mais resultados disponíveis")
-                                break
-                    
-                    # Tentar scroll em diferentes posições
-                    if stagnant_count % 2 == 0:
-                        add_debug_log("🔄 Tentando scroll alternativo...")
-                        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                        page.wait_for_timeout(2000)
-                    
+                    add_debug_log(f"⚠️ Sem mudança na contagem (estagnado #{stagnant_count})")
+                    if stagnant_count >= max_stagnant:
+                        add_debug_log(f"🏁 Scroll finalizado - sem progresso após {max_stagnant} tentativas.")
+                        break
+                    # Try scrolling the main feed element if possible, otherwise wheel event
+                    scroll_target_xpath = '//div[contains(@role, "feed")]'
+                    if page.locator(scroll_target_xpath).count() > 0:
+                         page.locator(scroll_target_xpath).first.evaluate('(element) => element.scrollTop = element.scrollHeight')
+                    else:
+                        page.mouse.wheel(0, 15000) # Fallback to mouse wheel
+                    page.wait_for_timeout(2500 + (stagnant_count * 500)) # Wait longer if stagnant
                 else:
-                    add_debug_log(f"✅ Progresso! De {previously_counted} para {current_count} (+{current_count - previously_counted})")
+                    stagnant_count = 0 # Reset stagnation counter
                     previously_counted = current_count
-                    stagnant_count = 0  # Reset do contador quando há progresso
                     search_status["message"] = f"Encontrados {current_count} resultados até agora..."
-                
+                    # Scroll down
+                    scroll_target_xpath = '//div[contains(@role, "feed")]'
+                    if page.locator(scroll_target_xpath).count() > 0:
+                         page.locator(scroll_target_xpath).first.evaluate('(element) => element.scrollTop = element.scrollHeight')
+                    else:
+                        page.mouse.wheel(0, 15000)
+                    page.wait_for_timeout(2000)
+
                 scroll_attempts += 1
-                
-                # Log de progresso a cada 10 tentativas
-                if scroll_attempts % 10 == 0:
-                    add_debug_log(f"📈 Progresso do scroll: {scroll_attempts}/{max_scroll_attempts} tentativas, {current_count} resultados")
-            
-            add_debug_log(f"🏁 SCROLL FINALIZADO - Total de tentativas: {scroll_attempts}")
-            
-            # Obter todos os resultados finais
-            final_count = page.locator(results_xpath).count()
-            add_debug_log(f"📊 CONTAGEM FINAL DE ELEMENTOS ENCONTRADOS: {final_count}")
-            
-            listings = page.locator(results_xpath).all()
-            if len(listings) > max_results:
-                listings = listings[:max_results]
-                add_debug_log(f"✂️ Limitando resultados de {len(page.locator(results_xpath).all())} para {max_results}")
-            
-            search_status["total_found"] = len(listings)
-            search_status["message"] = f"Encontrados {len(listings)} estabelecimentos. Coletando detalhes..."
-            add_debug_log(f"🎯 PROCESSANDO {len(listings)} ESTABELECIMENTOS")
-            
-            # Processar cada resultado
-            for i, listing_link in enumerate(listings):
-                progress = 40 + int((i / len(listings)) * 50)
-                search_status["progress"] = progress
-                search_status["message"] = f"Coletando dados ({i+1}/{len(listings)})..."
-                add_debug_log(f"🏪 Processando estabelecimento {i+1}/{len(listings)}")
-                
+                current_progress = 30 + int((min(current_count, max_results) / max_results) * 30) # Scroll progress up to 60%
+                search_status["progress"] = min(current_progress, 60)
+
+            if scroll_attempts == max_scroll_attempts:
+                add_debug_log(f"🏁 Scroll finalizado - limite de {max_scroll_attempts} tentativas atingido.")
+
+            # --- Processing Results ---
+            final_listings = page.locator(results_xpath).all()
+            add_debug_log(f"📊 Contagem final de elementos encontrados: {len(final_listings)}")
+
+            if len(final_listings) > max_results:
+                final_listings = final_listings[:max_results]
+                add_debug_log(f"✂️ Limitando resultados para {max_results}")
+
+            search_status["total_found"] = len(final_listings)
+            search_status["message"] = f"Encontrados {len(final_listings)} estabelecimentos. Coletando detalhes..."
+            add_debug_log(f"🎯 PROCESSANDO {len(final_listings)} ESTABELECIMENTOS")
+
+            for i, listing_link in enumerate(final_listings):
+                item_progress = 60 + int(((i + 1) / len(final_listings)) * 35) # Item progress from 60% to 95%
+                search_status["progress"] = item_progress
+                search_status["message"] = f"Coletando dados ({i+1}/{len(final_listings)})..."
+                add_debug_log(f"🏪 Processando estabelecimento {i+1}/{len(final_listings)}")
+
                 try:
-                    # Clicar no resultado
-                    listing = listing_link.locator("xpath=..")
-                    add_debug_log(f"🖱️ Clicando no estabelecimento {i+1}")
+                    # Click result and wait for details
+                    listing = listing_link.locator("xpath=..") # Parent element often contains more data
                     listing.click()
-                    
-                    # Esperar pelo carregamento dos detalhes
-                    name_xpath = '//div[contains(@class, "fontHeadlineLarge")]/span[contains(@class, "fontHeadlineLarge")] | //h1[contains(@class, "DUwDvf")]'
-                    try:
-                        page.wait_for_selector(name_xpath, timeout=15000)
-                        add_debug_log(f"✅ Detalhes carregados para estabelecimento {i+1}")
-                    except Exception:
-                        add_debug_log(f"⏰ Timeout aguardando detalhes do estabelecimento {i+1}")
-                        continue
-                    
-                    page.wait_for_timeout(1500)
-                    
-                    # Extrair dados
+                    name_xpath = '//h1[contains(@class, "DUwDvf")] | //div[contains(@class, "fontHeadlineLarge")]/span'
+                    page.wait_for_selector(name_xpath, timeout=15000)
+                    page.wait_for_timeout(1500) # Extra wait for dynamic content
+
+                    # Extract data
                     name = extract_data(name_xpath, page)
-                    add_debug_log(f"📝 Nome extraído: {name}")
-                    
+                    add_debug_log(f"  📝 Nome: {name}")
                     place_type = extract_data('//button[contains(@jsaction, "category")]', page)
                     address = extract_data('//button[@data-item-id="address"]//div[contains(@class, "fontBodyMedium")]', page)
                     phone = extract_data('//button[contains(@data-item-id, "phone:tel:")]//div[contains(@class, "fontBodyMedium")]', page)
                     website = extract_data('//a[@data-item-id="authority"]//div[contains(@class, "fontBodyMedium")]', page)
                     opening_hours = extract_data('//button[contains(@data-item-id, "oh")] | //div[contains(@aria-label, "Horário")]', page)
                     intro = extract_data('//div[contains(@class, "WeS02d")]//div[contains(@class, "PYvSYb")]', page)
-                    
-                    # Extrair avaliações
+
+                    # Extract reviews
                     reviews_xpath = '//div[contains(@class, "F7nice")]'
                     rev_count = "N/A"
                     rev_avg = "N/A"
-                    
                     if page.locator(reviews_xpath).count() > 0:
                         review_text = page.locator(reviews_xpath).first.inner_text()
                         parts = review_text.split()
+                        try: rev_avg = float(parts[0].replace(",", "."))
+                        except: pass
                         try:
-                            rev_avg = float(parts[0].replace(",", "."))
-                        except (ValueError, IndexError):
-                            rev_avg = "N/A"
-                        try:
-                            count_part = parts[1].strip("()").replace(",", "")
+                            count_part = parts[1].strip("()[]").replace(".", "").replace(",", "")
                             rev_count = int(count_part)
-                        except (ValueError, IndexError):
-                            count_span_xpath = reviews_xpath + '//span[@aria-label]'
-                            if page.locator(count_span_xpath).count() > 0:
-                                try:
-                                    count_part = page.locator(count_span_xpath).first.get_attribute("aria-label").split()[0].replace(",", "")
+                        except:
+                            try: # Fallback using aria-label
+                                count_span_xpath = reviews_xpath + '//span[@aria-label]'
+                                if page.locator(count_span_xpath).count() > 0:
+                                    aria_label = page.locator(count_span_xpath).first.get_attribute("aria-label")
+                                    count_part = aria_label.split()[0].replace(".", "").replace(",", "")
                                     rev_count = int(count_part)
-                                except (ValueError, IndexError, AttributeError):
-                                    rev_count = "N/A"
-                            else:
-                                rev_count = "N/A"
-                    
-                    # Extrair informações de serviços
+                            except: pass
+
+                    # Extract services
                     info_xpath_base = '//div[contains(@class, "LTs0Rc")] | //div[contains(@class, "iP2t7d")]'
                     store_shopping = False
                     in_store_pickup = False
                     delivery = False
-                    
                     info_elements = page.locator(info_xpath_base).all()
                     for info_element in info_elements:
                         info_text = info_element.inner_text().lower()
-                        if "compra" in info_text or "shop" in info_text:
-                            store_shopping = True
-                        if "retira" in info_text or "pickup" in info_text:
-                            in_store_pickup = True
-                        if "entrega" in info_text or "delivery" in info_text:
-                            delivery = True
-                    
-                    # Adicionar resultado à lista
+                        if "compra" in info_text or "shop" in info_text: store_shopping = True
+                        if "retira" in info_text or "pickup" in info_text: in_store_pickup = True
+                        if "entrega" in info_text or "delivery" in info_text: delivery = True
+
                     result = {
-                        "name": name,
-                        "type": place_type,
-                        "address": address,
-                        "phone": phone,
-                        "website": website,
-                        "opening_hours": opening_hours,
-                        "average_rating": rev_avg,
-                        "review_count": rev_count,
-                        "introduction": intro,
-                        "store_shopping": store_shopping,
-                        "in_store_pickup": in_store_pickup,
-                        "delivery": delivery
+                        "name": name, "type": place_type, "address": address, "phone": phone,
+                        "website": website, "opening_hours": opening_hours, "average_rating": rev_avg,
+                        "review_count": rev_count, "introduction": intro, "store_shopping": store_shopping,
+                        "in_store_pickup": in_store_pickup, "delivery": delivery
                     }
-                    
-                    results.append(result)
-                    add_debug_log(f"✅ Dados coletados com sucesso para: {name}")
-                    
-                except Exception as e:
-                    add_debug_log(f"❌ Erro ao processar estabelecimento {i+1}: {str(e)}")
-                    continue
-                
-                # Pequena pausa entre requisições
-                page.wait_for_timeout(500)
-            
-            search_status["progress"] = 95
-            search_status["message"] = "Finalizando coleta de dados..."
-            add_debug_log(f"🎉 COLETA FINALIZADA - {len(results)} estabelecimentos processados com sucesso")
-            
+                    local_results.append(result)
+                    add_debug_log(f"  ✅ Dados coletados para {name}")
+
+                except Exception as item_error:
+                    add_debug_log(f"⚠️ Erro ao processar estabelecimento {i+1}: {item_error}. Pulando item.")
+                    # Optionally add a placeholder or skip
+                    continue # Move to the next item
+
+            # --- Success Case ---
+            search_status["progress"] = 100
+            search_status["message"] = "Coleta concluída com sucesso!"
+            add_debug_log(f"✅ Coleta concluída. {len(local_results)} resultados processados.")
+
         except Exception as e:
-            add_debug_log(f"💥 ERRO GERAL NO SCRAPER: {str(e)}")
-            add_debug_log(f"📋 Traceback: {traceback.format_exc()}")
-            search_status["error"] = str(e)
-            search_status["message"] = f"Erro durante a coleta: {str(e)}"
+            # --- Main Error Handling ---
+            error_message = f"Erro durante a execução do scraper: {str(e)}"
+            add_debug_log(f"❌ ERRO FATAL: {error_message}")
+            traceback.print_exc() # Print full traceback to server console
+            search_status["error"] = error_message
+            search_status["message"] = "Ocorreu um erro durante a coleta."
+            # Set progress to 100 or a specific error state? Let's keep it where it failed.
+            # search_status["progress"] = 100
+
         finally:
-            browser.close()
-            add_debug_log("🔒 Navegador fechado")
-    
-    return results
+            # --- Cleanup ---
+            search_status["is_running"] = False
+            if browser:
+                try:
+                    browser.close()
+                    add_debug_log("🤖 Navegador fechado.")
+                except Exception as close_err:
+                    add_debug_log(f"⚠️ Erro ao fechar o navegador: {close_err}")
+            # Update global results only at the end
+            global search_results
+            search_results = local_results
+            add_debug_log(f"🏁 Processo finalizado. Retornando {len(local_results)} resultados.")
+            # Return results from the function scope
+            # Note: The Flask part will access the global `search_results`
 
-# Função para executar o scraper em uma thread separada
-def run_scraper(establishment_type, location, max_results):
-    global search_results, search_status
-    
-    try:
-        search_status["is_running"] = True
-        search_status["progress"] = 10
-        search_status["message"] = "Iniciando coleta de dados..."
-        search_status["error"] = None
-        
-        # Construir a query de busca
-        search_query = f"{establishment_type} em {location}"
-        
-        # Executar o scraper
-        results = scrape_google_maps(search_query, max_results)
-        
-        # Armazenar resultados
-        search_results = results
-        search_status["total_found"] = len(results)
-        
-        search_status["progress"] = 100
-        search_status["message"] = "Coleta concluída com sucesso!"
-        search_status["is_running"] = False
-        
-    except Exception as e:
-        search_status["error"] = str(e)
-        search_status["message"] = "Erro durante a coleta de dados."
-        search_status["progress"] = 0
-        search_status["is_running"] = False
-        traceback.print_exc()
-
-# Rotas da API
+# --- Flask Routes ---
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/search', methods=['POST'])
-def search():
-    global search_params, search_status
-    
-    # Obter parâmetros do formulário
-    establishment_type = request.form.get('establishment_type')
-    location = request.form.get('location')
-    max_results = int(request.form.get('max_results', 50))
-    
-    # Validar parâmetros
-    if not establishment_type or not location:
-        return jsonify({
-            "error": "Tipo de estabelecimento e localização são obrigatórios."
-        }), 400
-    
-    # Armazenar parâmetros de busca
-    search_params = {
-        "establishment_type": establishment_type,
-        "location": location,
-        "max_results": max_results
-    }
-    
-    # Verificar se já existe uma busca em andamento
+@app.route('/start_search', methods=['POST'])
+def start_search():
+    global search_params, search_status, search_results
     if search_status["is_running"]:
-        return jsonify({
-            "error": "Já existe uma busca em andamento. Aguarde a conclusão."
-        }), 400
-    
-    # Iniciar thread para executar o scraper
-    scraper_thread = threading.Thread(
-        target=run_scraper,
-        args=(establishment_type, location, max_results)
-    )
-    scraper_thread.daemon = True
-    scraper_thread.start()
-    
-    # Redirecionar para a página de resultados
-    return redirect('/results')
+        return jsonify({"error": "A search is already in progress."}), 400
+
+    data = request.json
+    establishment_type = data.get('establishment_type')
+    location = data.get('location')
+    max_results = int(data.get('max_results', 20)) # Default to 20 if not provided
+
+    if not establishment_type or not location:
+        return jsonify({"error": "Establishment type and location are required."}), 400
+
+    search_params = {
+        'establishment_type': establishment_type,
+        'location': location,
+        'max_results': max_results
+    }
+    search_results = [] # Clear previous results
+    search_status = {
+        "is_running": True,
+        "progress": 0,
+        "message": "Iniciando busca...",
+        "error": None,
+        "total_found": 0,
+        "debug_logs": []
+    }
+
+    # Start the scraper in a separate thread
+    thread = threading.Thread(target=run_scraper_wrapper, args=(establishment_type, location, max_results))
+    thread.daemon = True # Allows app to exit even if thread is running
+    thread.start()
+
+    return jsonify({"message": "Search started successfully."})
+
+# Wrapper function to handle the global state update within the thread
+def run_scraper_wrapper(establishment_type, location, max_results):
+    global search_results, search_status
+    try:
+        # The scrape_google_maps function now handles its own status updates and error logging
+        scrape_google_maps(establishment_type, location, max_results)
+        # Note: scrape_google_maps updates the global search_results internally now
+    except Exception as e:
+        # This catches errors if scrape_google_maps itself fails catastrophically before its own try/except
+        error_msg = f"Erro fatal no wrapper do scraper: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        search_status["error"] = error_msg
+        search_status["message"] = "Erro crítico ao executar a coleta."
+        search_status["is_running"] = False
+        search_status["progress"] = 100 # Indicate completion, albeit with error
+
+@app.route('/status')
+def get_status():
+    global search_status
+    # Add memory usage to status for monitoring
+    status_copy = search_status.copy()
+    status_copy['memory_mb'] = check_memory_usage()
+    return jsonify(status_copy)
 
 @app.route('/results')
-def results():
-    return render_template('results.html')
+def get_results():
+    global search_results
+    return jsonify(search_results)
 
-@app.route('/api/results')
-def api_results():
-    return jsonify({
-        "search_params": search_params,
-        "total_found": search_status["total_found"],
-        "results": search_results
-    })
+@app.route('/download_results')
+def download_results():
+    global search_results
+    if not search_results:
+        return "Nenhum resultado para baixar.", 404
 
-@app.route('/api/status')
-def api_status():
-    return jsonify(search_status)
+    # Create JSON file in memory
+    json_data = json.dumps(search_results, indent=4, ensure_ascii=False)
+    mem_file = io.BytesIO()
+    mem_file.write(json_data.encode('utf-8'))
+    mem_file.seek(0)
 
-@app.route('/export/txt')
-def export_txt():
-    try:
-        # Verificar se há resultados
-        if not search_results:
-            return jsonify({"error": "Nenhum resultado disponível para exportação."}), 404
-        
-        # Criar conteúdo do arquivo TXT
-        content = f"Resultados da busca por: {search_params['establishment_type']} em {search_params['location']}\n"
-        content += f"Total de estabelecimentos encontrados: {len(search_results)}\n"
-        content += "=" * 40 + "\n\n"
-        
-        for result in search_results:
-            content += f"Nome: {result.get('name', 'N/A')}\n"
-            content += f"Tipo: {result.get('type', 'N/A')}\n"
-            content += f"Endereço: {result.get('address', 'N/A')}\n"
-            content += f"Telefone: {result.get('phone', 'N/A')}\n"
-            content += f"Website: {result.get('website', 'N/A')}\n"
-            content += f"Horário: {result.get('opening_hours', 'N/A')}\n"
-            content += f"Avaliação Média: {result.get('average_rating', 'N/A')}\n"
-            content += f"Contagem de Avaliações: {result.get('review_count', 'N/A')}\n"
-            content += f"Introdução: {result.get('introduction', 'N/A')}\n"
-            content += f"Compras na Loja: {'Sim' if result.get('store_shopping') else 'Não'}\n"
-            content += f"Retirada na Loja: {'Sim' if result.get('in_store_pickup') else 'Não'}\n"
-            content += f"Entrega: {'Sim' if result.get('delivery') else 'Não'}\n"
-            content += "---" * 10 + "\n\n"
-        
-        # Criar um objeto de arquivo em memória
-        buffer = io.BytesIO()
-        buffer.write(content.encode('utf-8'))
-        buffer.seek(0)
-        
-        # Gerar nome do arquivo com timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"resultados_{timestamp}.txt"
-        
-        return send_file(
-            buffer,
-            as_attachment=True,
-            download_name=filename,
-            mimetype='text/plain'
-        )
-    
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"google_maps_results_{timestamp}.json"
 
-@app.route('/export/json')
-def export_json():
-    try:
-        # Verificar se há resultados
-        if not search_results:
-            return jsonify({"error": "Nenhum resultado disponível para exportação."}), 404
-        
-        # Criar objeto JSON
-        data = {
-            "search_params": search_params,
-            "total_found": len(search_results),
-            "results": search_results
-        }
-        
-        # Criar um objeto de arquivo em memória
-        buffer = io.BytesIO()
-        buffer.write(json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8'))
-        buffer.seek(0)
-        
-        # Gerar nome do arquivo com timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"resultados_{timestamp}.json"
-        
-        return send_file(
-            buffer,
-            as_attachment=True,
-            download_name=filename,
-            mimetype='application/json'
-        )
-    
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/export/csv')
-def export_csv():
-    try:
-        # Verificar se há resultados
-        if not search_results:
-            return jsonify({"error": "Nenhum resultado disponível para exportação."}), 404
-        
-        # Criar conteúdo CSV
-        headers = [
-            'Nome',
-            'Tipo',
-            'Endereço',
-            'Telefone',
-            'Website',
-            'Horário',
-            'Avaliação Média',
-            'Contagem de Avaliações',
-            'Introdução',
-            'Compras na Loja',
-            'Retirada na Loja',
-            'Entrega'
-        ]
-        
-        # Linhas de dados
-        rows = []
-        for result in search_results:
-            row = [
-                f'"' + str(result.get("name", "N/A")).replace('"', '""') + '"',
-                f'"' + str(result.get("type", "N/A")).replace('"', '""') + '"',
-                f'"' + str(result.get("address", "N/A")).replace('"', '""') + '"',
-                f'"' + str(result.get("phone", "N/A")).replace('"', '""') + '"',
-                f'"' + str(result.get("website", "N/A")).replace('"', '""') + '"',
-                f'"' + str(result.get("opening_hours", "N/A")).replace('"', '""') + '"',
-                f'"' + str(result.get("average_rating", "N/A")) + '"',
-                f'"' + str(result.get("review_count", "N/A")) + '"',
-                f'"' + str(result.get("introduction", "N/A")).replace('"', '""') + '"',
-                'Sim' if result.get('store_shopping') else 'Não',
-                'Sim' if result.get('in_store_pickup') else 'Não',
-                'Sim' if result.get('delivery') else 'Não'
-            ]
-            rows.append(row)
-        
-        # Montar conteúdo CSV
-        content = ','.join(headers) + '\n'
-        for row in rows:
-            content += ','.join(row) + '\n'
-        
-        # Criar um objeto de arquivo em memória
-        buffer = io.BytesIO()
-        buffer.write(content.encode('utf-8'))
-        buffer.seek(0)
-        
-        # Gerar nome do arquivo com timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"resultados_{timestamp}.csv"
-        
-        return send_file(
-            buffer,
-            as_attachment=True,
-            download_name=filename,
-            mimetype='text/csv'
-        )
-    
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return send_file(
+        mem_file,
+        mimetype='application/json',
+        as_attachment=True,
+        download_name=filename
+    )
 
 if __name__ == '__main__':
-    print("Iniciando Google Maps Scraper Web...")
-    print("Acesse http://localhost:5000 no seu navegador")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Make sure the static folder exists if needed for CSS/JS
+    if not os.path.exists('static'):
+        os.makedirs('static')
+    # Make sure templates folder exists
+    if not os.path.exists('templates'):
+        os.makedirs('templates')
+        # Create a basic index.html if it doesn't exist
+        if not os.path.exists('templates/index.html'):
+             with open('templates/index.html', 'w') as f:
+                 f.write('<html><head><title>Scraper</title></head><body><h1>Scraper Interface</h1><p>Placeholder</p></body></html>')
+
+    # Run Flask app
+    # Use host='0.0.0.0' to make it accessible externally if needed
+    app.run(debug=True, host='0.0.0.0', port=5000)
+

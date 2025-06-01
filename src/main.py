@@ -25,6 +25,13 @@ search_status = {
     "total_found": 0
 }
 
+def check_memory_usage():
+    """Verifica o uso de memória atual."""
+    import psutil
+    process = psutil.Process()
+    memory_info = process.memory_info()
+    return memory_info.rss / 1024 / 1024  # MB
+
 # Função para extrair dados de um elemento usando XPath
 def extract_data(xpath, page):
     """Extrai texto de um elemento usando XPath."""
@@ -85,7 +92,7 @@ def scrape_google_maps(search_query, max_results):
             
             previously_counted = 0
             scroll_attempts = 0
-            max_scroll_attempts = 30
+            max_scroll_attempts = min(20, max(5, max_results // 5))
             
             while scroll_attempts < max_scroll_attempts:
                 page.mouse.wheel(0, 10000)
@@ -116,6 +123,13 @@ def scrape_google_maps(search_query, max_results):
                 search_status["progress"] = progress
                 search_status["message"] = f"Coletando dados ({i+1}/{len(listings)})..."
                 
+                 if i % 10 == 0:  # A cada 10 resultados
+                    memory_usage = check_memory_usage()
+                    print(f"Uso de memória atual: {memory_usage:.2f} MB")
+                 if memory_usage > 400:  # Se estiver usando mais de 400MB
+                    print("Uso de memória alto, pausando brevemente...")
+                    page.wait_for_timeout(5000)  # Pausa para liberar recursos
+
                 try:
                     # Clicar no resultado
                     listing = listing_link.locator("xpath=..")
@@ -126,9 +140,21 @@ def scrape_google_maps(search_query, max_results):
                     try:
                         page.wait_for_selector(name_xpath, timeout=15000)
                     except Exception:
-                        continue
-                    
-                    page.wait_for_timeout(1500)
+                pass
+        
+    except Exception as e:
+        print(f"Erro ao processar resultado {i+1}: {e}")
+        continue
+    
+    # Pequena pausa entre requisições
+    page.wait_for_timeout(500)
+    
+    # ADICIONE O CÓDIGO AQUI, NO FINAL DO LOOP, APÓS PROCESSAR CADA RESULTADO
+    if i > 0 and i % 20 == 0:
+        print(f"Pausa após processar {i} resultados...")
+        memory_usage = check_memory_usage()
+        print(f"Uso de memória: {memory_usage:.2f} MB")
+        page.wait_for_timeout(3000)  # Pausa de 3 segundos a cada 20 resultados
                     
                     # Extrair dados
                     name = extract_data(name_xpath, page)

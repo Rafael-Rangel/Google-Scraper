@@ -117,23 +117,20 @@ def scrape_google_maps(search_query, max_results):
             search_status["total_found"] = len(listings)
             search_status["message"] = f"Encontrados {len(listings)} estabelecimentos. Coletando detalhes..."
             
-          # Processar cada resultado
+            # Processar cada resultado
             for i, listing_link in enumerate(listings):
                 progress = 40 + int((i / len(listings)) * 50)
                 search_status["progress"] = progress
                 search_status["message"] = f"Coletando dados ({i+1}/{len(listings)})..."
-            
+                
                 memory_usage = check_memory_usage()
-            
+                
                 if i % 10 == 0:
                     print(f"Uso de memória atual: {memory_usage:.2f} MB")
-            
+                
                 if memory_usage > 400:
                     print("Uso de memória alto, pausando brevemente...")
                     page.wait_for_timeout(5000)
-
-
-
 
                 try:
                     # Clicar no resultado
@@ -145,21 +142,14 @@ def scrape_google_maps(search_query, max_results):
                     try:
                         page.wait_for_selector(name_xpath, timeout=15000)
                     except Exception:
-                pass
-        
-    except Exception as e:
-        print(f"Erro ao processar resultado {i+1}: {e}")
-        continue
-    
-    # Pequena pausa entre requisições
-    page.wait_for_timeout(500)
-    
-    # ADICIONE O CÓDIGO AQUI, NO FINAL DO LOOP, APÓS PROCESSAR CADA RESULTADO
-    if i > 0 and i % 20 == 0:
-        print(f"Pausa após processar {i} resultados...")
-        memory_usage = check_memory_usage()
-        print(f"Uso de memória: {memory_usage:.2f} MB")
-        page.wait_for_timeout(3000)  # Pausa de 3 segundos a cada 20 resultados
+                        pass
+                    
+                    # Pausa a cada 20 resultados
+                    if i > 0 and i % 20 == 0:
+                        print(f"Pausa após processar {i} resultados...")
+                        memory_usage = check_memory_usage()
+                        print(f"Uso de memória: {memory_usage:.2f} MB")
+                        page.wait_for_timeout(3000)  # Pausa de 3 segundos a cada 20 resultados
                     
                     # Extrair dados
                     name = extract_data(name_xpath, page)
@@ -231,6 +221,7 @@ def scrape_google_maps(search_query, max_results):
                     results.append(result)
                     
                 except Exception as e:
+                    print(f"Erro ao processar resultado {i+1}: {e}")
                     continue
                 
                 # Pequena pausa entre requisições

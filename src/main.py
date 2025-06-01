@@ -1,4 +1,30 @@
-import sys
+def run_scraper(establishment_type, location, max_results):
+    global search_results, search_status
+    
+    try:
+        search_status["is_running"] = True
+        search_status["progress"] = 10
+        search_status["message"] = "Iniciando coleta de dados..."
+        search_status["error"] = None
+        search_status["debug_logs"] = []  # Limpar logs anteriores
+        
+        # Construir a query de busca
+        search_query = f"{establishment_type} em {location}"
+        
+        # Executar o scraper
+        results = scrape_google_maps(search_query, max_results)
+        
+        # Armazenar resultados
+        search_results = results
+        search_status["total_found"] = len(results)
+        
+        search_status["progress"] = 100
+        search_status["message"] = "Coleta concluída com sucesso!"
+        search_status["is_running"] = False
+        
+    except Exception as e:
+        search_status["error"] = str(e)
+        search_status["message"] = "import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))  # Necessário para deploy
 
@@ -22,7 +48,8 @@ search_status = {
     "progress": 0,
     "message": "",
     "error": None,
-    "total_found": 0
+    "total_found": 0,
+    "debug_logs": []  # Adicionando logs para o frontend
 }
 
 def check_memory_usage():
@@ -45,6 +72,14 @@ def extract_data(xpath, page):
         return "N/A"
 
 # Função principal de scraping
+def add_debug_log(message):
+    """Adiciona log tanto no console quanto no status para o frontend."""
+    print(message)
+    search_status["debug_logs"].append(f"{datetime.now().strftime('%H:%M:%S')} - {message}")
+    # Manter apenas os últimos 50 logs para não sobrecarregar
+    if len(search_status["debug_logs"]) > 50:
+        search_status["debug_logs"] = search_status["debug_logs"][-50:]
+
 def scrape_google_maps(search_query, max_results):
     """Função principal para scraping do Google Maps."""
     global search_status
@@ -55,7 +90,7 @@ def scrape_google_maps(search_query, max_results):
     with sync_playwright() as p:
         search_status["progress"] = 15
         search_status["message"] = "Iniciando navegador..."
-        print(f"🚀 INICIANDO SCRAPER - Query: {search_query}, Max Results: {max_results}")
+        add_debug_log(f"🚀 INICIANDO SCRAPER - Query: {search_query}, Max Results: {max_results}")
         
         # Iniciar navegador em modo headless (invisível)
         browser = p.chromium.launch(headless=True)
@@ -64,32 +99,32 @@ def scrape_google_maps(search_query, max_results):
         try:
             search_status["progress"] = 20
             search_status["message"] = "Acessando Google Maps..."
-            print("🌐 Acessando Google Maps...")
+            add_debug_log("🌐 Acessando Google Maps...")
             
             # Acessar Google Maps
             page.goto("https://www.google.com/maps", timeout=60000)
             page.wait_for_timeout(10000)
-            print("✅ Google Maps carregado")
+            add_debug_log("✅ Google Maps carregado")
             
             # Buscar pelo termo
             search_status["progress"] = 25
             search_status["message"] = f"Buscando por: {search_query}..."
-            print(f"🔍 Realizando busca por: {search_query}")
+            add_debug_log(f"🔍 Realizando busca por: {search_query}")
             
             page.locator('//input[@id="searchboxinput"]').fill(search_query)
             page.wait_for_timeout(1000)
             page.keyboard.press("Enter")
-            print("⌨️ Enter pressionado, aguardando resultados...")
+            add_debug_log("⌨️ Enter pressionado, aguardando resultados...")
             
             # Esperar pelos resultados
             results_xpath = '//a[contains(@href, "https://www.google.com/maps/place")]'
             try:
                 page.wait_for_selector(results_xpath, timeout=30000)
                 initial_count = page.locator(results_xpath).count()
-                print(f"🎯 Primeiros resultados encontrados: {initial_count}")
+                add_debug_log(f"🎯 Primeiros resultados encontrados: {initial_count}")
                 search_status["message"] = "Resultados encontrados, carregando mais..."
             except Exception as e:
-                print(f"❌ Erro ao encontrar resultados: {str(e)}")
+                add_debug_log(f"❌ Erro ao encontrar resultados: {str(e)}")
                 search_status["error"] = f"Não foi possível encontrar resultados para '{search_query}'"
                 browser.close()
                 return []
@@ -97,7 +132,7 @@ def scrape_google_maps(search_query, max_results):
             # Rolar para carregar mais resultados
             search_status["progress"] = 30
             search_status["message"] = "Carregando resultados..."
-            print("📜 INICIANDO PROCESSO DE SCROLL PARA CARREGAR MAIS RESULTADOS")
+            add_debug_log("📜 INICIANDO PROCESSO DE SCROLL PARA CARREGAR MAIS RESULTADOS")
             
             previously_counted = 0
             scroll_attempts = 0
@@ -105,27 +140,27 @@ def scrape_google_maps(search_query, max_results):
             stagnant_count = 0  # Contador para tentativas sem mudança
             
             while scroll_attempts < max_scroll_attempts:
-                print(f"🔄 Tentativa de scroll #{scroll_attempts + 1}")
+                add_debug_log(f"🔄 Tentativa de scroll #{scroll_attempts + 1}")
                 
                 # Fazer scroll mais agressivo
                 page.mouse.wheel(0, 15000)
                 page.wait_for_timeout(3000)  # Aumentei o tempo de espera
                 
                 current_count = page.locator(results_xpath).count()
-                print(f"📊 Contagem atual: {current_count} (anterior: {previously_counted})")
+                add_debug_log(f"📊 Contagem atual: {current_count} (anterior: {previously_counted})")
                 
                 # Verificar se atingiu o máximo desejado
                 if current_count >= max_results:
-                    print(f"🎯 Meta atingida! {current_count} >= {max_results}")
+                    add_debug_log(f"🎯 Meta atingida! {current_count} >= {max_results}")
                     break
                 
                 # Verificar se não houve mudança
                 if current_count == previously_counted:
                     stagnant_count += 1
-                    print(f"⚠️ Sem mudança na contagem (tentativa estagnada #{stagnant_count})")
+                    add_debug_log(f"⚠️ Sem mudança na contagem (tentativa estagnada #{stagnant_count})")
                     
                     if stagnant_count >= 5:  # Se ficar 5 tentativas sem mudança
-                        print("🛑 Muitas tentativas sem progresso, verificando se há botão 'Ver mais'...")
+                        add_debug_log("🛑 Muitas tentativas sem progresso, verificando se há botão 'Ver mais'...")
                         
                         # Tentar encontrar e clicar no botão "Ver mais resultados"
                         more_button_selectors = [
@@ -140,30 +175,30 @@ def scrape_google_maps(search_query, max_results):
                         for selector in more_button_selectors:
                             try:
                                 if page.locator(selector).count() > 0:
-                                    print(f"🔘 Encontrei botão 'Ver mais': {selector}")
+                                    add_debug_log(f"🔘 Encontrei botão 'Ver mais': {selector}")
                                     page.locator(selector).first.click()
                                     page.wait_for_timeout(3000)
                                     button_clicked = True
                                     stagnant_count = 0  # Reset do contador
                                     break
                             except Exception as e:
-                                print(f"❌ Erro ao clicar no botão: {e}")
+                                add_debug_log(f"❌ Erro ao clicar no botão: {e}")
                                 continue
                         
                         if not button_clicked:
-                            print("🚫 Nenhum botão 'Ver mais' encontrado")
+                            add_debug_log("🚫 Nenhum botão 'Ver mais' encontrado")
                             if stagnant_count >= 8:  # Mais algumas tentativas após não encontrar botão
-                                print("🏁 Finalizando - sem mais resultados disponíveis")
+                                add_debug_log("🏁 Finalizando - sem mais resultados disponíveis")
                                 break
                     
                     # Tentar scroll em diferentes posições
                     if stagnant_count % 2 == 0:
-                        print("🔄 Tentando scroll alternativo...")
+                        add_debug_log("🔄 Tentando scroll alternativo...")
                         page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                         page.wait_for_timeout(2000)
                     
                 else:
-                    print(f"✅ Progresso! De {previously_counted} para {current_count} (+{current_count - previously_counted})")
+                    add_debug_log(f"✅ Progresso! De {previously_counted} para {current_count} (+{current_count - previously_counted})")
                     previously_counted = current_count
                     stagnant_count = 0  # Reset do contador quando há progresso
                     search_status["message"] = f"Encontrados {current_count} resultados até agora..."
@@ -172,50 +207,50 @@ def scrape_google_maps(search_query, max_results):
                 
                 # Log de progresso a cada 10 tentativas
                 if scroll_attempts % 10 == 0:
-                    print(f"📈 Progresso do scroll: {scroll_attempts}/{max_scroll_attempts} tentativas, {current_count} resultados")
+                    add_debug_log(f"📈 Progresso do scroll: {scroll_attempts}/{max_scroll_attempts} tentativas, {current_count} resultados")
             
-            print(f"🏁 SCROLL FINALIZADO - Total de tentativas: {scroll_attempts}")
+            add_debug_log(f"🏁 SCROLL FINALIZADO - Total de tentativas: {scroll_attempts}")
             
             # Obter todos os resultados finais
             final_count = page.locator(results_xpath).count()
-            print(f"📊 CONTAGEM FINAL DE ELEMENTOS ENCONTRADOS: {final_count}")
+            add_debug_log(f"📊 CONTAGEM FINAL DE ELEMENTOS ENCONTRADOS: {final_count}")
             
             listings = page.locator(results_xpath).all()
             if len(listings) > max_results:
                 listings = listings[:max_results]
-                print(f"✂️ Limitando resultados de {len(page.locator(results_xpath).all())} para {max_results}")
+                add_debug_log(f"✂️ Limitando resultados de {len(page.locator(results_xpath).all())} para {max_results}")
             
             search_status["total_found"] = len(listings)
             search_status["message"] = f"Encontrados {len(listings)} estabelecimentos. Coletando detalhes..."
-            print(f"🎯 PROCESSANDO {len(listings)} ESTABELECIMENTOS")
+            add_debug_log(f"🎯 PROCESSANDO {len(listings)} ESTABELECIMENTOS")
             
             # Processar cada resultado
             for i, listing_link in enumerate(listings):
                 progress = 40 + int((i / len(listings)) * 50)
                 search_status["progress"] = progress
                 search_status["message"] = f"Coletando dados ({i+1}/{len(listings)})..."
-                print(f"🏪 Processando estabelecimento {i+1}/{len(listings)}")
+                add_debug_log(f"🏪 Processando estabelecimento {i+1}/{len(listings)}")
                 
                 try:
                     # Clicar no resultado
                     listing = listing_link.locator("xpath=..")
-                    print(f"🖱️ Clicando no estabelecimento {i+1}")
+                    add_debug_log(f"🖱️ Clicando no estabelecimento {i+1}")
                     listing.click()
                     
                     # Esperar pelo carregamento dos detalhes
                     name_xpath = '//div[contains(@class, "fontHeadlineLarge")]/span[contains(@class, "fontHeadlineLarge")] | //h1[contains(@class, "DUwDvf")]'
                     try:
                         page.wait_for_selector(name_xpath, timeout=15000)
-                        print(f"✅ Detalhes carregados para estabelecimento {i+1}")
+                        add_debug_log(f"✅ Detalhes carregados para estabelecimento {i+1}")
                     except Exception:
-                        print(f"⏰ Timeout aguardando detalhes do estabelecimento {i+1}")
+                        add_debug_log(f"⏰ Timeout aguardando detalhes do estabelecimento {i+1}")
                         continue
                     
                     page.wait_for_timeout(1500)
                     
                     # Extrair dados
                     name = extract_data(name_xpath, page)
-                    print(f"📝 Nome extraído: {name}")
+                    add_debug_log(f"📝 Nome extraído: {name}")
                     
                     place_type = extract_data('//button[contains(@jsaction, "category")]', page)
                     address = extract_data('//button[@data-item-id="address"]//div[contains(@class, "fontBodyMedium")]', page)
@@ -283,10 +318,10 @@ def scrape_google_maps(search_query, max_results):
                     }
                     
                     results.append(result)
-                    print(f"✅ Dados coletados com sucesso para: {name}")
+                    add_debug_log(f"✅ Dados coletados com sucesso para: {name}")
                     
                 except Exception as e:
-                    print(f"❌ Erro ao processar estabelecimento {i+1}: {str(e)}")
+                    add_debug_log(f"❌ Erro ao processar estabelecimento {i+1}: {str(e)}")
                     continue
                 
                 # Pequena pausa entre requisições
@@ -294,16 +329,16 @@ def scrape_google_maps(search_query, max_results):
             
             search_status["progress"] = 95
             search_status["message"] = "Finalizando coleta de dados..."
-            print(f"🎉 COLETA FINALIZADA - {len(results)} estabelecimentos processados com sucesso")
+            add_debug_log(f"🎉 COLETA FINALIZADA - {len(results)} estabelecimentos processados com sucesso")
             
         except Exception as e:
-            print(f"💥 ERRO GERAL NO SCRAPER: {str(e)}")
-            print(f"📋 Traceback: {traceback.format_exc()}")
+            add_debug_log(f"💥 ERRO GERAL NO SCRAPER: {str(e)}")
+            add_debug_log(f"📋 Traceback: {traceback.format_exc()}")
             search_status["error"] = str(e)
             search_status["message"] = f"Erro durante a coleta: {str(e)}"
         finally:
             browser.close()
-            print("🔒 Navegador fechado")
+            add_debug_log("🔒 Navegador fechado")
     
     return results
 

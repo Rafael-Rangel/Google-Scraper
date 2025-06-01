@@ -376,12 +376,19 @@ def export_csv():
         
         rows = []
         for result in search_results:
+            # Fix: Use separate variables to avoid f-string quote conflicts
+            name_val = str(result.get("name", "N/A")).replace('"', '""')
+            type_val = str(result.get("type", "N/A")).replace('"', '""')
+            address_val = str(result.get("address", "N/A")).replace('"', '""')
+            phone_val = str(result.get("phone", "N/A")).replace('"', '""')
+            website_val = str(result.get("website", "N/A")).replace('"', '""')
+            
             row = [
-                f'"{str(result.get("name", "N/A")).replace('"', '""')}"',
-                f'"{str(result.get("type", "N/A")).replace('"', '""')}"',
-                f'"{str(result.get("address", "N/A")).replace('"', '""')}"',
-                f'"{str(result.get("phone", "N/A")).replace('"', '""')}"',
-                f'"{str(result.get("website", "N/A")).replace('"', '""')}"'
+                f'"{name_val}"',
+                f'"{type_val}"',
+                f'"{address_val}"',
+                f'"{phone_val}"',
+                f'"{website_val}"'
             ]
             rows.append(row)
         

@@ -259,7 +259,7 @@ def search():
     # Obter parâmetros do formulário
     establishment_type = request.form.get('establishment_type')
     location = request.form.get('location')
-    max_results = int(request.form.get('max_results', 20))
+    max_results = int(request.form.get('max_results', 50))
     
     # Validar parâmetros
     if not establishment_type or not location:

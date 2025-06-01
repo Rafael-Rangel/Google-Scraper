@@ -117,18 +117,23 @@ def scrape_google_maps(search_query, max_results):
             search_status["total_found"] = len(listings)
             search_status["message"] = f"Encontrados {len(listings)} estabelecimentos. Coletando detalhes..."
             
-            # Processar cada resultado
+          # Processar cada resultado
             for i, listing_link in enumerate(listings):
                 progress = 40 + int((i / len(listings)) * 50)
                 search_status["progress"] = progress
                 search_status["message"] = f"Coletando dados ({i+1}/{len(listings)})..."
-                
-                 if i % 10 == 0:  # A cada 10 resultados
-                    memory_usage = check_memory_usage()
+            
+                memory_usage = check_memory_usage()
+            
+                if i % 10 == 0:
                     print(f"Uso de memória atual: {memory_usage:.2f} MB")
-                 if memory_usage > 400:  # Se estiver usando mais de 400MB
+            
+                if memory_usage > 400:
                     print("Uso de memória alto, pausando brevemente...")
-                    page.wait_for_timeout(5000)  # Pausa para liberar recursos
+                    page.wait_for_timeout(5000)
+
+
+
 
                 try:
                     # Clicar no resultado

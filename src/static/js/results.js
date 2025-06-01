@@ -96,51 +96,85 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         // Adicionar cada resultado à lista
-        searchResults.forEach(result => {
+        searchResults.forEach((result, index) => {
             const resultItem = document.createElement('div');
             resultItem.className = 'result-item';
             
-            // Criar estrelas para avaliação
-            let starsHtml = '';
-            if (result.average_rating !== 'N/A') {
-                const rating = parseFloat(result.average_rating);
-                const fullStars = Math.floor(rating);
-                const halfStar = rating % 1 >= 0.5;
-                
-                for (let i = 0; i < 5; i++) {
-                    if (i < fullStars) {
-                        starsHtml += '<span class="material-icons">star</span>';
-                    } else if (i === fullStars && halfStar) {
-                        starsHtml += '<span class="material-icons">star_half</span>';
-                    } else {
-                        starsHtml += '<span class="material-icons">star_border</span>';
-                    }
+            // Função para verificar se um valor é válido (não é N/A, null, undefined ou vazio)
+            function isValidValue(value) {
+                return value && value !== 'N/A' && value.trim() !== '';
+            }
+            
+            // Construir HTML do item com apenas os campos que existem
+            let resultHTML = `
+                <div class="result-header">
+                    <h3 class="result-title">${result.name || 'Nome não disponível'}</h3>
+                    <span class="result-number">#${index + 1}</span>
+                </div>
+            `;
+            
+            // Adicionar tipo se disponível
+            if (isValidValue(result.type)) {
+                resultHTML += `<p class="result-info"><span class="result-label">Tipo:</span> ${result.type}</p>`;
+            }
+            
+            // Adicionar endereço se disponível
+            if (isValidValue(result.address)) {
+                resultHTML += `<p class="result-info"><span class="result-label">Endereço:</span> ${result.address}</p>`;
+            }
+            
+            // Adicionar telefone se disponível
+            if (isValidValue(result.phone)) {
+                resultHTML += `<p class="result-info"><span class="result-label">Telefone:</span> <a href="tel:${result.phone}">${result.phone}</a></p>`;
+            }
+            
+            // Adicionar website se disponível
+            if (isValidValue(result.website)) {
+                const websiteUrl = result.website.startsWith('http') ? result.website : `https://${result.website}`;
+                resultHTML += `<p class="result-info"><span class="result-label">Website:</span> <a href="${websiteUrl}" target="_blank" rel="noopener">${result.website}</a></p>`;
+            }
+            
+            // Adicionar botões de ação
+            resultHTML += `
+                <div class="result-actions">
+                    <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((result.name || '') + ' ' + (result.address || ''))}" 
+                       target="_blank" 
+                       rel="noopener"
+                       class="btn btn-outline">
+                        <span class="material-icons">map</span>
+                        Ver no Google Maps
+                    </a>
+            `;
+            
+            // Adicionar botão de ligar se houver telefone
+            if (isValidValue(result.phone)) {
+                resultHTML += `
+                    <a href="tel:${result.phone}" class="btn btn-outline">
+                        <span class="material-icons">phone</span>
+                        Ligar
+                    </a>
+                `;
+            }
+            
+            // Adicionar botão do WhatsApp se houver telefone
+            if (isValidValue(result.phone)) {
+                const cleanPhone = result.phone.replace(/\D/g, ''); // Remove caracteres não numéricos
+                if (cleanPhone.length >= 10) {
+                    resultHTML += `
+                        <a href="https://wa.me/55${cleanPhone}" 
+                           target="_blank" 
+                           rel="noopener"
+                           class="btn btn-outline">
+                            <span class="material-icons">chat</span>
+                            WhatsApp
+                        </a>
+                    `;
                 }
             }
             
-            // Construir HTML do item
-            resultItem.innerHTML = `
-                <h3 class="result-title">${result.name}</h3>
-                <p class="result-info"><span class="result-label">Tipo:</span> ${result.type}</p>
-                <p class="result-info"><span class="result-label">Endereço:</span> ${result.address}</p>
-                <p class="result-info"><span class="result-label">Telefone:</span> ${result.phone}</p>
-                <p class="result-info"><span class="result-label">Website:</span> ${result.website !== 'N/A' ? `<a href="${result.website}" target="_blank">${result.website}</a>` : 'N/A'}</p>
-                <p class="result-info"><span class="result-label">Horário:</span> ${result.opening_hours}</p>
-                ${result.introduction !== 'N/A' ? `<p class="result-info"><span class="result-label">Descrição:</span> ${result.introduction}</p>` : ''}
-                <div class="result-rating">
-                    <div class="rating-stars">${starsHtml}</div>
-                    <span>${result.average_rating} (${result.review_count} avaliações)</span>
-                </div>
-                <p class="result-info mt-1">
-                    <span class="result-label">Compras na Loja:</span> ${result.store_shopping ? 'Sim' : 'Não'} | 
-                    <span class="result-label">Retirada na Loja:</span> ${result.in_store_pickup ? 'Sim' : 'Não'} | 
-                    <span class="result-label">Entrega:</span> ${result.delivery ? 'Sim' : 'Não'}
-                </p>
-                <p class="result-info mt-1">
-                    <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(result.name + ' ' + result.address)}" target="_blank" class="btn btn-outline">Ver no Google Maps</a>
-                </p>
-            `;
+            resultHTML += '</div>'; // Fechar result-actions
             
+            resultItem.innerHTML = resultHTML;
             resultsList.appendChild(resultItem);
         });
     }
@@ -149,6 +183,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function showAlert(message, type) {
         alertContainer.innerHTML = `
             <div class="alert alert-${type}">
+                <span class="material-icons">
+                    ${type === 'error' ? 'error' : 'info'}
+                </span>
                 ${message}
             </div>
         `;
@@ -158,4 +195,26 @@ document.addEventListener('DOMContentLoaded', function() {
             alertContainer.innerHTML = '';
         }, 5000);
     }
+    
+    // Função para copiar informações para a área de transferência
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            showAlert('Informações copiadas para a área de transferência!', 'success');
+        }).catch(() => {
+            showAlert('Erro ao copiar informações.', 'error');
+        });
+    }
+    
+    // Adicionar listener para botões de copiar (se você quiser adicionar essa funcionalidade)
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('copy-btn')) {
+            const resultItem = e.target.closest('.result-item');
+            const name = resultItem.querySelector('.result-title').textContent;
+            const address = resultItem.querySelector('[data-field="address"]')?.textContent || '';
+            const phone = resultItem.querySelector('[data-field="phone"]')?.textContent || '';
+            
+            const copyText = `${name}\n${address}\n${phone}`;
+            copyToClipboard(copyText);
+        }
+    });
 });

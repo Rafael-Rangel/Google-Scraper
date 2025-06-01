@@ -28,6 +28,8 @@ RUN apt-get update && apt-get install -y \
     libu2f-udev \
     libvulkan1 \
     libxss1 \
+    fonts-noto-color-emoji \
+    fonts-unifont \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,8 +37,8 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Instalar navegadores necessários para o Playwright
-RUN playwright install chromium --with-deps
+# Instalar navegadores necessários para o Playwright (sem --with-deps)
+RUN playwright install chromium
 
 # Copiar o código da aplicação
 COPY . .

@@ -157,9 +157,9 @@ def scrape_google_maps_v3(search_query, max_results):
                 search_status["message"] = f"Encontrados {current_url_count} links potenciais até agora..."
 
                 # Stop scrolling if we have found significantly more URLs than needed, or if no new ones appear
-                if current_url_count >= max_results * 2 and max_results > 0: # Heuristic: aim for 2x needed URLs
-                    logging.info(f"[V3] Número suficiente de URLs ({current_url_count}) encontrados para processar. Parando rolagem.")
-                    break
+                # if current_url_count >= max_results * 2 and max_results > 0: # Heuristic: aim for 2x needed URLs
+                #     logging.info(f"[V3] Número suficiente de URLs ({current_url_count}) encontrados para processar. Parando rolagem.")
+                #     break
 
                 if newly_found_count == 0:
                     no_new_results_streak += 1
@@ -175,6 +175,7 @@ def scrape_google_maps_v3(search_query, max_results):
 
             logging.info(f"[V3] Rolagem concluída. {len(collected_urls_for_scroll_control)} URLs únicos encontrados para controle.")
 
+            # Collect final elements after scrolling is complete
             logging.info("[V3] Coletando elementos finais da lista para processamento por clique...")
             listings_elements = page.locator(results_link_xpath).all()
             total_elements_available = len(listings_elements)
@@ -203,8 +204,11 @@ def scrape_google_maps_v3(search_query, max_results):
                     try: element_url = listing_element.get_attribute('href')
                     except Exception: element_url = None
 
+                    # Normalize URL for comparison
+                    normalized_url = element_url.split("?")[0] if element_url else None
+
                     # Skip if URL was already processed
-                    if element_url in collected_urls_for_scroll_control:
+                    if normalized_url in collected_urls_for_scroll_control:
                         logging.warning(f"[V3] URL já processada, ignorando elemento {i+1}.")
                         continue
 

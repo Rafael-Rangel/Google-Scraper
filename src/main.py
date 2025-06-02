@@ -52,7 +52,7 @@ def scrape_google_maps_v3(search_query, max_results):
     """Função principal para scraping do Google Maps, garantindo o número de resultados únicos."""
     global search_status
     results = []
-    unique_results_set = set() # Conjunto para rastrear resultados únicos (nome, endereço)
+    unique_results_set = set() # Conjunto para rastrear resultados únicos (nome, endereço, telefone)
 
     logging.info(f"[V3] Iniciando scraping para: '{search_query}', buscando até {max_results} resultados únicos.")
     search_status['unique_results'] = 0
@@ -100,7 +100,7 @@ def scrape_google_maps_v3(search_query, max_results):
                 logging.info("[V3] Aplicando hover no primeiro resultado para focar na lista...")
                 if page.locator(results_link_xpath).count() > 0:
                     page.locator(results_link_xpath).first.hover()
-                    page.wait_for_timeout(500)
+                    # page.wait_for_timeout(500) # Removed wait after hover
                 else:
                     logging.warning("[V3] Nenhum link de resultado encontrado para aplicar hover inicial.")
 
@@ -202,7 +202,11 @@ def scrape_google_maps_v3(search_query, max_results):
                     # Attempt to get URL for potential pre-filtering (optional, might be unreliable)
                     try: element_url = listing_element.get_attribute('href')
                     except Exception: element_url = None
-                    # Potential future optimization: Check if element_url was already processed successfully?
+
+                    # Skip if URL was already processed
+                    if element_url in collected_urls_for_scroll_control:
+                        logging.warning(f"[V3] URL já processada, ignorando elemento {i+1}.")
+                        continue
 
                     logging.info(f"[V3] Clicando no elemento {i+1}...")
                     listing_element.click()
@@ -216,7 +220,7 @@ def scrape_google_maps_v3(search_query, max_results):
                         logging.error(f"[V3] Erro ao esperar pelos detalhes do elemento {i+1} após clique: {wait_error}. Pulando item.")
                         continue # Skip to the next element in the outer loop
 
-                    page.wait_for_timeout(1500) # Small delay for content rendering
+                    # page.wait_for_timeout(1500) # Removed small delay
 
                     # Define XPaths for data extraction
                     place_type_xpath = '//button[contains(@jsaction, "category")]'
@@ -284,8 +288,13 @@ def scrape_google_maps_v3(search_query, max_results):
                             if "entrega" in info_text or "delivery" in info_text: delivery = True
                     except Exception as e_info: logging.error(f"[V3] Erro ao extrair informações de serviço: {e_info}")
 
+                    # Normalize data for unique key
+                    normalized_name = name.lower().strip()
+                    normalized_address = address.lower().strip() if address != "N/A" else ""
+                    normalized_phone = phone.lower().strip() if phone != "N/A" else ""
+
                     # Define the unique key for duplicate checking
-                    unique_key = (name, address if address != "N/A" else phone)
+                    unique_key = (normalized_name, normalized_address, normalized_phone)
 
                     # Check for validity (must have a name) and uniqueness
                     if name != "N/A" and unique_key not in unique_results_set:
